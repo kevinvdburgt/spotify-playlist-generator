@@ -46,11 +46,16 @@ async function fromSearch(
       ? ` year:${f.year_from ?? 1900}-${f.year_to ?? 2100}`
       : "";
 
-  const out: Track[] = [];
+  const wantedGenres = new Set(playlist.genres.map((g) => g.toLowerCase()));
+  const collected: Track[] = [];
   const PAGES = 3;
   const LIMIT = 50;
+
+  // Spotify's `genre:` filter only matches track/album genre tags which are
+  // sparsely populated. Use the genre name as a free-text keyword instead,
+  // then verify via the artist's genre tags below.
   for (const genre of playlist.genres) {
-    const q = encodeURIComponent(`genre:"${genre}"${yearClause}`);
+    const q = encodeURIComponent(`${genre}${yearClause}`);
     for (let page = 0; page < PAGES; page++) {
       const offset = page * LIMIT;
       try {
@@ -59,12 +64,50 @@ async function fromSearch(
         );
         const items = res.tracks?.items ?? [];
         if (items.length === 0) break;
-        out.push(...items);
+        collected.push(...items);
         if (items.length < LIMIT) break;
       } catch (err) {
         console.warn(`  search "${genre}" offset ${offset} failed: ${(err as Error).message}`);
         break;
       }
+    }
+  }
+
+  // Verify each track's primary artist has a matching genre tag.
+  const artistIds = Array.from(
+    new Set(collected.map((t) => t.artists[0]?.id).filter((id): id is string => Boolean(id))),
+  );
+  const artistGenres = await fetchArtistGenres(client, artistIds);
+
+  const matched: Track[] = [];
+  const seen = new Set<string>();
+  for (const t of collected) {
+    if (seen.has(t.id)) continue;
+    const aid = t.artists[0]?.id;
+    if (!aid) continue;
+    const genres = artistGenres.get(aid) ?? [];
+    if (genres.some((g) => wantedGenres.has(g.toLowerCase()))) {
+      seen.add(t.id);
+      matched.push(t);
+    }
+  }
+  return matched;
+}
+
+async function fetchArtistGenres(
+  client: SpotifyClient,
+  artistIds: string[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  for (let i = 0; i < artistIds.length; i += 50) {
+    const chunk = artistIds.slice(i, i + 50);
+    try {
+      const res = await client.request<{ artists: { id: string; genres: string[] }[] }>(
+        `/artists?ids=${chunk.join(",")}`,
+      );
+      for (const a of res.artists) out.set(a.id, a.genres);
+    } catch (err) {
+      console.warn(`  artists batch failed: ${(err as Error).message}`);
     }
   }
   return out;
