@@ -9,7 +9,12 @@ import { randomBytes } from "node:crypto";
 
 const PORT = 8888;
 const REDIRECT_URI = `http://127.0.0.1:${PORT}/callback`;
-const SCOPES = ["playlist-modify-public", "playlist-modify-private", "playlist-read-private"];
+const SCOPES = [
+  "playlist-modify-public",
+  "playlist-modify-private",
+  "playlist-read-private",
+  "user-library-read",
+];
 
 const clientId = required("SPOTIFY_CLIENT_ID");
 const clientSecret = required("SPOTIFY_CLIENT_SECRET");
