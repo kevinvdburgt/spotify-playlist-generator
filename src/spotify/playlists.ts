@@ -4,10 +4,14 @@ export type Track = {
   id: string;
   name: string;
   artists: { id: string; name: string }[];
-  album: { release_date: string };
+  album: {
+    release_date: string;
+    images: { url: string; width: number | null; height: number | null }[];
+  };
   popularity: number;
   duration_ms: number;
   uri: string;
+  external_urls: { spotify: string };
 };
 
 type PlaylistTrackItem = { track: Track | null };
