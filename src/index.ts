@@ -10,7 +10,7 @@ import {
   replacePlaylistTracks,
   type Track,
 } from "./spotify/playlists";
-import { renderPlaylistMarkdown, updateReadmeLatest, writeSnapshot, type PlaylistSection } from "./readme";
+import { renderPlaylistMarkdown, writeSnapshot, type PlaylistSection } from "./snapshot";
 import { loadState, saveState } from "./state";
 
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -58,8 +58,7 @@ async function main(): Promise<void> {
       const date = new Date().toISOString().slice(0, 10);
       const body = renderPlaylistMarkdown(sections, date);
       const rel = writeSnapshot(date, body);
-      updateReadmeLatest(rel, date, body);
-      console.log(`wrote ${rel} + updated README.md`);
+      console.log(`wrote ${rel}`);
     }
   } else {
     console.log("(dry-run) skipping file writes");

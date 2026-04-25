@@ -1,11 +1,8 @@
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, renameSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Track } from "./spotify/playlists";
 
-const README_PATH = "README.md";
 const SNAPSHOT_DIR = "playlists";
-const START_MARKER = "<!-- todays playlist -->";
-const END_MARKER = "<!-- /todays playlist -->";
 
 export type PlaylistSection = { playlistName: string; tracks: Track[] };
 
@@ -55,20 +52,6 @@ export function writeSnapshot(date: string, body: string): string {
   const content = `# Playlist — ${date}\n\n${body}`;
   atomicWrite(rel, content);
   return rel;
-}
-
-export function updateReadmeLatest(snapshotRelPath: string, date: string, body: string): void {
-  const block = `${START_MARKER}\n> Latest snapshot: [${date}](${snapshotRelPath})\n\n${body}${END_MARKER}`;
-  let readme = existsSync(README_PATH) ? readFileSync(README_PATH, "utf8") : "";
-  const startIdx = readme.indexOf(START_MARKER);
-  const endIdx = readme.indexOf(END_MARKER);
-  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-    readme = readme.slice(0, startIdx) + block + readme.slice(endIdx + END_MARKER.length);
-  } else {
-    const sep = readme.length === 0 || readme.endsWith("\n") ? "" : "\n";
-    readme = `${readme}${sep}\n## Today's playlist\n\n${block}\n`;
-  }
-  atomicWrite(README_PATH, readme);
 }
 
 function atomicWrite(path: string, content: string): void {
