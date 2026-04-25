@@ -1,7 +1,7 @@
 import { Blacklist } from "./blacklist";
 import { loadConfig, type PlaylistConfig } from "./config";
 import { passesFilters } from "./filters";
-import { getAccessToken } from "./spotify/auth";
+import { getAccessToken, getClientCredentialsToken } from "./spotify/auth";
 import { SpotifyClient } from "./spotify/client";
 import { discoverCandidates } from "./spotify/discover";
 import {
@@ -10,6 +10,7 @@ import {
   replacePlaylistTracks,
   type Track,
 } from "./spotify/playlists";
+import { renderPlaylistMarkdown, writeSnapshot, type PlaylistSection } from "./snapshot";
 import { loadState, saveState } from "./state";
 
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -17,23 +18,34 @@ const DRY_RUN = process.argv.includes("--dry-run");
 async function main(): Promise<void> {
   const clientId = required("SPOTIFY_CLIENT_ID");
   const clientSecret = required("SPOTIFY_CLIENT_SECRET");
-  const refreshToken = required("SPOTIFY_REFRESH_TOKEN");
+  const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN;
 
   const config = loadConfig();
   const blacklist = Blacklist.load();
-  const accessToken = await getAccessToken({ clientId, clientSecret, refreshToken });
+
+  let accessToken: string;
+  if (refreshToken) {
+    accessToken = await getAccessToken({ clientId, clientSecret, refreshToken });
+  } else if (DRY_RUN) {
+    console.log("(dry-run) no refresh token — using client_credentials (read-only)");
+    accessToken = await getClientCredentialsToken({ clientId, clientSecret });
+  } else {
+    throw new Error("Missing required env var: SPOTIFY_REFRESH_TOKEN");
+  }
   const client = new SpotifyClient(accessToken);
 
   let failures = 0;
+  const sections: PlaylistSection[] = [];
   for (const playlist of config.playlists) {
     try {
-      await processPlaylist({
+      const picks = await processPlaylist({
         client,
         playlist,
         market: config.defaults.market,
         defaultTracksPerRun: config.defaults.tracks_per_run,
         blacklist,
       });
+      if (picks.length > 0) sections.push({ playlistName: playlist.name, tracks: picks });
     } catch (err) {
       failures++;
       console.error(`✗ ${playlist.name} (${playlist.id}): ${(err as Error).message}`);
@@ -42,6 +54,12 @@ async function main(): Promise<void> {
 
   if (!DRY_RUN) {
     if (blacklist.save()) console.log("blacklist.yaml updated");
+    if (sections.length > 0) {
+      const date = new Date().toISOString().slice(0, 10);
+      const body = renderPlaylistMarkdown(sections, date);
+      const rel = writeSnapshot(date, body);
+      console.log(`wrote ${rel}`);
+    }
   } else {
     console.log("(dry-run) skipping file writes");
   }
@@ -58,19 +76,24 @@ async function processPlaylist(args: {
   market: string;
   defaultTracksPerRun: number;
   blacklist: Blacklist;
-}): Promise<void> {
+}): Promise<Track[]> {
   const { client, playlist, market, defaultTracksPerRun, blacklist } = args;
   const limit = playlist.tracks_per_run ?? defaultTracksPerRun;
 
   console.log(`\n▶ ${playlist.name} (${playlist.id})`);
 
   // 1. Fetch current playlist tracks (full objects so we can record removals).
-  const current = await getPlaylistTracks(client, playlist.id);
-  const currentIds = new Set(current.map((t) => t.id));
+  let currentIds = new Set<string>();
+  try {
+    const current = await getPlaylistTracks(client, playlist.id);
+    currentIds = new Set(current.map((t) => t.id));
+  } catch (err) {
+    console.warn(`  could not read playlist (${(err as Error).message}) — skipping removal diff`);
+  }
 
   // 2. Diff against last-known state to detect manual removals.
   const prev = loadState(playlist.id);
-  if (prev) {
+  if (prev && currentIds.size > 0) {
     const removedIds = prev.track_ids.filter((id) => !currentIds.has(id));
     if (removedIds.length > 0) {
       console.log(`  detected ${removedIds.length} removed track(s) → blacklisting`);
@@ -102,12 +125,12 @@ async function processPlaylist(args: {
   // 6. Replace playlist (refresh mode).
   if (DRY_RUN) {
     console.log("  (dry-run) skipping replace + state save");
-    return;
+    return [];
   }
 
   if (picks.length === 0) {
     console.log("  no picks — leaving playlist untouched");
-    return;
+    return [];
   }
 
   await replacePlaylistTracks(
@@ -124,6 +147,7 @@ async function processPlaylist(args: {
     updated_at: new Date().toISOString(),
   });
   console.log("  ✓ playlist replaced + state saved");
+  return picks;
 }
 
 // Spread picks across artists so one artist doesn't dominate.
