@@ -1,5 +1,6 @@
 import { Blacklist } from "./blacklist";
 import { loadConfig, type PlaylistConfig } from "./config";
+import { processFavourites } from "./favourites";
 import { passesFilters } from "./filters";
 import { getAccessToken, getClientCredentialsToken } from "./spotify/auth";
 import { SpotifyClient } from "./spotify/client";
@@ -54,11 +55,18 @@ async function main(): Promise<void> {
 
   if (!DRY_RUN) {
     if (blacklist.save()) console.log("blacklist.yaml updated");
+    const date = new Date().toISOString().slice(0, 10);
+    let snapshotRel: string | null = null;
     if (sections.length > 0) {
-      const date = new Date().toISOString().slice(0, 10);
       const body = renderPlaylistMarkdown(sections, date);
-      const rel = writeSnapshot(date, body);
-      console.log(`wrote ${rel}`);
+      snapshotRel = writeSnapshot(date, body);
+      console.log(`wrote ${snapshotRel}`);
+    }
+    try {
+      const newFavs = await processFavourites({ client, runDate: date, snapshotRel });
+      if (newFavs.length > 0) console.log(`favourites: +${newFavs.length} new`);
+    } catch (err) {
+      console.warn(`favourites: skipped (${(err as Error).message})`);
     }
   } else {
     console.log("(dry-run) skipping file writes");

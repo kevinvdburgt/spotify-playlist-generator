@@ -65,6 +65,12 @@ After the first successful run, `state/<playlist_id>.json` records the track IDs
 
 To un-blacklist a track, edit `blacklist.yaml` by hand.
 
+## Favourites
+
+Each run also fetches your Spotify "Liked Songs" and appends any newly-liked tracks to `FAVOURITE.md` (same table format as the daily snapshots, plus a link to the snapshot generated on the run that first detected the like). It's append-only — unliking a song on Spotify does not remove the row.
+
+Requires the `user-library-read` scope. If you authorised before this feature existed, re-run `bun run authorize` and update the `SPOTIFY_REFRESH_TOKEN` secret.
+
 ## Schedule
 
 Cron: `0 4 * * *` (04:00 UTC). That's 05:00 Amsterdam in winter (CET), 06:00 in summer (CEST). Adjust the cron in `.github/workflows/update.yml` if you want different DST behaviour.
