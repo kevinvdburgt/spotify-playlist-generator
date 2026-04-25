@@ -1,7 +1,7 @@
 import { Blacklist } from "./blacklist";
 import { loadConfig, type PlaylistConfig } from "./config";
 import { passesFilters } from "./filters";
-import { getAccessToken } from "./spotify/auth";
+import { getAccessToken, getClientCredentialsToken } from "./spotify/auth";
 import { SpotifyClient } from "./spotify/client";
 import { discoverCandidates } from "./spotify/discover";
 import {
@@ -18,11 +18,20 @@ const DRY_RUN = process.argv.includes("--dry-run");
 async function main(): Promise<void> {
   const clientId = required("SPOTIFY_CLIENT_ID");
   const clientSecret = required("SPOTIFY_CLIENT_SECRET");
-  const refreshToken = required("SPOTIFY_REFRESH_TOKEN");
+  const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN;
 
   const config = loadConfig();
   const blacklist = Blacklist.load();
-  const accessToken = await getAccessToken({ clientId, clientSecret, refreshToken });
+
+  let accessToken: string;
+  if (refreshToken) {
+    accessToken = await getAccessToken({ clientId, clientSecret, refreshToken });
+  } else if (DRY_RUN) {
+    console.log("(dry-run) no refresh token — using client_credentials (read-only)");
+    accessToken = await getClientCredentialsToken({ clientId, clientSecret });
+  } else {
+    throw new Error("Missing required env var: SPOTIFY_REFRESH_TOKEN");
+  }
   const client = new SpotifyClient(accessToken);
 
   let failures = 0;
@@ -75,12 +84,17 @@ async function processPlaylist(args: {
   console.log(`\n▶ ${playlist.name} (${playlist.id})`);
 
   // 1. Fetch current playlist tracks (full objects so we can record removals).
-  const current = await getPlaylistTracks(client, playlist.id);
-  const currentIds = new Set(current.map((t) => t.id));
+  let currentIds = new Set<string>();
+  try {
+    const current = await getPlaylistTracks(client, playlist.id);
+    currentIds = new Set(current.map((t) => t.id));
+  } catch (err) {
+    console.warn(`  could not read playlist (${(err as Error).message}) — skipping removal diff`);
+  }
 
   // 2. Diff against last-known state to detect manual removals.
   const prev = loadState(playlist.id);
-  if (prev) {
+  if (prev && currentIds.size > 0) {
     const removedIds = prev.track_ids.filter((id) => !currentIds.has(id));
     if (removedIds.length > 0) {
       console.log(`  detected ${removedIds.length} removed track(s) → blacklisting`);
