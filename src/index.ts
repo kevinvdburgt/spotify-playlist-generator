@@ -10,6 +10,7 @@ import {
   replacePlaylistTracks,
   type Track,
 } from "./spotify/playlists";
+import { renderPlaylistMarkdown, writeSnapshot, type PlaylistSection } from "./snapshot";
 import { loadState, saveState } from "./state";
 
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -34,15 +35,17 @@ async function main(): Promise<void> {
   const client = new SpotifyClient(accessToken);
 
   let failures = 0;
+  const sections: PlaylistSection[] = [];
   for (const playlist of config.playlists) {
     try {
-      await processPlaylist({
+      const picks = await processPlaylist({
         client,
         playlist,
         market: config.defaults.market,
         defaultTracksPerRun: config.defaults.tracks_per_run,
         blacklist,
       });
+      if (picks.length > 0) sections.push({ playlistName: playlist.name, tracks: picks });
     } catch (err) {
       failures++;
       console.error(`✗ ${playlist.name} (${playlist.id}): ${(err as Error).message}`);
@@ -51,6 +54,12 @@ async function main(): Promise<void> {
 
   if (!DRY_RUN) {
     if (blacklist.save()) console.log("blacklist.yaml updated");
+    if (sections.length > 0) {
+      const date = new Date().toISOString().slice(0, 10);
+      const body = renderPlaylistMarkdown(sections, date);
+      const rel = writeSnapshot(date, body);
+      console.log(`wrote ${rel}`);
+    }
   } else {
     console.log("(dry-run) skipping file writes");
   }
@@ -67,7 +76,7 @@ async function processPlaylist(args: {
   market: string;
   defaultTracksPerRun: number;
   blacklist: Blacklist;
-}): Promise<void> {
+}): Promise<Track[]> {
   const { client, playlist, market, defaultTracksPerRun, blacklist } = args;
   const limit = playlist.tracks_per_run ?? defaultTracksPerRun;
 
@@ -116,12 +125,12 @@ async function processPlaylist(args: {
   // 6. Replace playlist (refresh mode).
   if (DRY_RUN) {
     console.log("  (dry-run) skipping replace + state save");
-    return;
+    return [];
   }
 
   if (picks.length === 0) {
     console.log("  no picks — leaving playlist untouched");
-    return;
+    return [];
   }
 
   await replacePlaylistTracks(
@@ -138,6 +147,7 @@ async function processPlaylist(args: {
     updated_at: new Date().toISOString(),
   });
   console.log("  ✓ playlist replaced + state saved");
+  return picks;
 }
 
 // Spread picks across artists so one artist doesn't dominate.
