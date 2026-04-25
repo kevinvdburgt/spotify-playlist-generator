@@ -1,0 +1,31 @@
+defaults:
+  tracks_per_run: 10
+  market: NL
+
+playlists:
+  - id: 0HdZ3E1q80h88s5n1mGds7
+    name: Hardstyle Discovery
+    genres: [hardstyle, "hard dance"]
+    sources: [search, categories, new_releases]
+    filters:
+      year_from: 2023
+      year_to: 2026
+      popularity_min: 15
+      popularity_max: 85
+      duration_ms_min: 120000
+      duration_ms_max: 420000
+    tracks_per_run: 15
+
+  - id: 1tDxglSa9YdKBRoHujYJmh
+    name: Hardcore Discovery
+    genres: [hardcore, "uk hardcore"]
+    sources: [search, new_releases]
+    filters:
+      year_from: 2022
+
+  - id: 0OHXTURK00YolFGkbABsQH
+    name: Frenchcore Fresh
+    genres: [frenchcore]
+    sources: [search]
+    filters:
+      year_from: 2023
