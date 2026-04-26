@@ -62,7 +62,7 @@ playlists:
       popularity_min: 40
       duration_ms_min: 150000
       duration_ms_max: 480000
-      tracks_per_run: 60
+    tracks_per_run: 60
 
   - id: 4cUE4GDduaALretdQJYwj6
     name: Hardstyle Workout
